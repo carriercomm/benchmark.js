@@ -45,6 +45,11 @@
     _.runInContext(root)
   ));
 
+  /** The Q promise library */
+  var q = root.q || (root.q = (
+    q = load('../vendor/q/q.js')
+  ));
+
   /** The `Benchmark` constructor to test */
   var Benchmark = root.Benchmark || (root.Benchmark = (
     Benchmark = load('../benchmark.js') || root.Benchmark,

@@ -125,7 +125,8 @@
   function runInContext(context) {
     // exit early if unable to acquire Lo-Dash
     var _ = context && context._ || req('lodash') || root._;
-    if (!_) {
+    var q = context && context.q || req('q') || root.q;
+    if (!_ || !q) {
       Benchmark.runInContext = runInContext;
       return Benchmark;
     }
