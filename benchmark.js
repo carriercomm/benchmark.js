@@ -1606,19 +1606,65 @@
         // Create a new compiled test, instead of using the cached `bench.compiled`,
         // to avoid potential engine optimizations enabled over the life of the test.
         var funcBody = deferred
-          ? 'var d#=this,${fnArg}=d#,m#=d#.benchmark._original,f#=m#.fn,su#=m#.setup,td#=m#.teardown;' +
+          ? 'var d#=this,
+                 ${fnArg}=d#,
+                 m#=d#.benchmark._original,
+                 f#=m#.fn,
+                 su#=m#.setup,
+                 td#=m#.teardown;' +
+
+
+            'var _resolved=Q.defer().resolve();
+
+            var _suArg;
+            try{
+              // if special _resolve name this will succeed
+              _suArg=${setupArg}
+            }catch(e){
+              // otherwise setup a deferred object for what ever the user defined as their first argument
+              var ${setupArg}=Q.defer();
+              _suArg = $(setupArg);
+            }
+
+            var _tdArg;
+            try{
+              _tdArg=${teardownArg}
+            }catch(e){
+              var ${teardownArg}=Q.defer();
+              _tdArg=${teardownArg};
+            }
+            ' +
+
             // when `deferred.cycles` is `0` then...
             'if(!d#.cycles){' +
-            // set `deferred.fn`
-            'd#.fn=function(){var ${fnArg}=d#;if(typeof f#=="function"){try{${fn}\n}catch(e#){f#(d#)}}else{${fn}\n}};' +
-            // set `deferred.teardown`
-            'd#.teardown=function(){d#.cycles=0;if(typeof td#=="function"){try{${teardown}\n}catch(e#){td#()}}else{${teardown}\n}};' +
-            // execute the benchmark's `setup`
-            'if(typeof su#=="function"){try{${setup}\n}catch(e#){su#()}}else{${setup}\n};' +
-            // start timer
-            't#.start(d#);' +
+              // set `deferred.fn`
+              'd#.fn=function(){
+                var ${fnArg}=d#;
+                if(typeof f#=="function"){
+                  try{${fn}\n}catch(e#){f#(d#)}
+                }else{${fn}\n}
+              };' +
+              // set `deferred.teardown`
+              'd#.teardown=function(){
+                d#.cycles=0;
+                if(typeof td#=="function"){
+                  try{${teardown}\n}catch(e#){td#()}
+                }
+                else{${teardown}\n}
+              };' +
+              // execute the benchmark's `setup`
+              'if(typeof su#=="function"){
+                try{${setup}\n}catch(e#){su#()}
+              }
+              else{${setup}\n};' +
             // execute `deferred.fn` and return a dummy object
-            '}d#.fn();return{uid:"${uid}"}'
+            '}
+            _suArg.then(function suDone () {' +
+              // start timer after setup done
+              't#.start(d#);
+              d#.fn();
+            });
+            return{uid:"${uid}"}'
 
           : 'var r#,s#,m#=this,f#=m#.fn,i#=m#.count,n#=t#.ns;${setup}\n${begin};' +
             'while(i#--){${fn}\n}${end};${teardown}\nreturn{elapsed:r#,uid:"${uid}"}';
@@ -1684,16 +1730,28 @@
        * Creates a compiled function from the given function `body`.
        */
       function createCompiled(bench, decompilable, deferred, body) {
+
+        // sepcial argument name that will be replaced with a resolved promise
+        var resolved = '_resolved';
+
         var fn = bench.fn,
-            fnArg = deferred ? getFirstArgument(fn) || 'deferred' : '';
+            fnArg = deferred ? getFirstArgument(fn) || 'deferred' : '',
+            setup = bench.setup,
+            // setup deferred shall be optional
+            setupArg = deferred ? getFirstArgument(bench.setup) : resolved,
+            teardown = bench.teardown,
+            // teardown deferred shall be optional
+            teardownArg = deferred ? getFirstArgument(bench.teardown): resolved;
 
         templateData.uid = uid + uidCounter++;
 
         _.assign(templateData, {
-          'setup': decompilable ? getSource(bench.setup) : interpolate('m#.setup()'),
+          'setup': decompilable ? getSource(setup) : interpolate('m#.setup(' + setupArg + ')'),
+          'setupArg': setupArg,
           'fn': decompilable ? getSource(fn) : interpolate('m#.fn(' + fnArg + ')'),
           'fnArg': fnArg,
-          'teardown': decompilable ? getSource(bench.teardown) : interpolate('m#.teardown()')
+          'teardown': decompilable ? getSource(bench.teardown) : interpolate('m#.teardown(' + teardownArg + ')'),
+          'teardownArg': teardownArg,
         });
 
         // use API of chosen timer
